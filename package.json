@@ -1,0 +1,26 @@
+{
+  "name": "haru-vue",
+  "version": "1.0.0",
+  "description": "learn vue3 source code",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeeHaruYa/haru-vue.git"
+  },
+  "author": "小蛋黄呀",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LeeHaruYa/haru-vue/issues"
+  },
+  "homepage": "https://github.com/LeeHaruYa/haru-vue#readme",
+  "dependencies": {
+    "esbuild": "^0.15.14",
+    "minimist": "^1.2.7",
+    "typescript": "^4.9.3",
+    "vitest": "^0.25.2",
+    "vue": "^3.2.45"
+  }
+}
