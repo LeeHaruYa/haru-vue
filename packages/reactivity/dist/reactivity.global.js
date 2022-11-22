@@ -26,21 +26,92 @@ var VueReactivity = (() => {
   });
 
   // packages/reactivity/src/effect.ts
-  var effectFn = null;
+  var activeEffect = null;
+  var depsMap = /* @__PURE__ */ new WeakMap();
   var ReactiveEffect = class {
     constructor(fn) {
       this.fn = fn;
-      this.active = null;
+      this.active = true;
       this.parent = null;
       this.deps = [];
     }
     run() {
-      this.fn();
+      if (!this.active) {
+        this.fn();
+      } else {
+        try {
+          this.parent = activeEffect;
+          activeEffect = this;
+          cleanEffect(this);
+          this.fn();
+        } finally {
+          activeEffect = this.parent;
+          this.parent = null;
+        }
+      }
+    }
+    stop() {
+      if (this.active) {
+        this.active = false;
+        cleanEffect(this);
+      }
     }
   };
-  function effect(fn) {
+  function cleanEffect(reactiveEffect) {
+    let deps = reactiveEffect.deps;
+    for (let i = 0; i < deps.length; i++) {
+      deps[i].delete(reactiveEffect);
+    }
+    reactiveEffect.deps.length = 0;
+  }
+  function track(target, key) {
+    if (activeEffect) {
+      let targetMap = depsMap.get(target);
+      if (!targetMap) {
+        depsMap.set(target, targetMap = /* @__PURE__ */ new Map());
+      }
+      let deps = targetMap.get(key);
+      if (!deps) {
+        targetMap.set(key, deps = /* @__PURE__ */ new Set());
+      }
+      trackEffect(deps);
+      deps.add(activeEffect);
+    }
+  }
+  function trigger(target, key) {
+    let targetMap = depsMap.get(target);
+    if (targetMap) {
+      let deps = targetMap.get(key);
+      if (deps) {
+        triggerEffects(deps);
+      }
+    }
+  }
+  function triggerEffects(effects) {
+    if (effects) {
+      effects = new Set(effects);
+      effects.forEach((effect2) => {
+        if (effect2 !== activeEffect) {
+          effect2.run();
+        }
+      });
+    }
+  }
+  function trackEffect(deps) {
+    if (!activeEffect) {
+      return;
+    }
+    const shouldTrack = !deps.has(activeEffect);
+    if (shouldTrack) {
+      activeEffect.deps.push(deps);
+    }
+  }
+  function effect(fn, options = {}) {
     const _effect = new ReactiveEffect(fn);
     _effect.run();
+    const runner = _effect.run.bind(_effect);
+    runner.effect = _effect;
+    return runner;
   }
 
   // packages/shared/src/index.ts
@@ -48,31 +119,46 @@ var VueReactivity = (() => {
     return val !== null && typeof val === "object";
   }
 
+  // packages/reactivity/src/baseHandler.ts
+  function isReactive(value) {
+    return value && value["__v_isReactive" /* IS_REACTIVE */];
+  }
+  var baseHandler = {
+    get: function(target, key, receiver) {
+      if (key === "__v_isReactive" /* IS_REACTIVE */) {
+        return true;
+      }
+      const res = Reflect.get(target, key, receiver);
+      track(target, key);
+      if (isObject(res)) {
+        return reactive(res);
+      }
+      return res;
+    },
+    set: function(target, key, value, receiver) {
+      let oldValue = target[key];
+      if (oldValue !== value) {
+        const res = Reflect.set(target, key, value, receiver);
+        trigger(target, key);
+        return res;
+      }
+    }
+  };
+
   // packages/reactivity/src/reactive.ts
   var reactiveMap = /* @__PURE__ */ new WeakMap();
   function reactive(target) {
     if (!isObject(target)) {
       return;
     }
-    if (target["__v_isReactive" /* IS_REACTIVE */]) {
+    if (isReactive(target)) {
       return target;
     }
     const existingProxy = reactiveMap.get(target);
     if (existingProxy) {
       return existingProxy;
     }
-    const proxy = new Proxy(target, {
-      get: function(target2, key, receiver) {
-        const res = Reflect.get(target2, key, receiver);
-        console.log(effectFn);
-        console.log(`\u83B7\u53D6${key}\u7684\u503C\u662F${target2[key]}`);
-        return res;
-      },
-      set: function(target2, key, value, receiver) {
-        console.log(`\u8BBE\u7F6E${key}\u7684\u503C\u662F${value}`);
-        return Reflect.set(target2, key, value, receiver);
-      }
-    });
+    const proxy = new Proxy(target, baseHandler);
     reactiveMap.set(target, proxy);
     return proxy;
   }
