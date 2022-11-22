@@ -1,4 +1,5 @@
 import { isObject } from "@haru-vue/shared";
+import { activeFn } from "./effect";
 
 export const enum ReactiveFlags {
   SKIP = "__v_skip",
@@ -22,6 +23,7 @@ export function reactive(target) {
   const proxy = new Proxy(target, {
     get: function (target, key, receiver) {
       const res = Reflect.get(target, key, receiver);
+      console.log( `active` activeFn);
       console.log(`获取${key as string}的值是${target[key]}`);
       return res;
     },
