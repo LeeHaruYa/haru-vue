@@ -16,7 +16,7 @@ export const baseHandler = {
             return true
         }
         const res = Reflect.get(target, key, receiver);
-        track(target, key);
+        track(target, key); // 收集
         if (isObject(res)) {
             return reactive(res)
         }
@@ -26,7 +26,7 @@ export const baseHandler = {
         let oldValue = target[key];
         if (oldValue !== value) {
             const res = Reflect.set(target, key, value, receiver);
-            trigger(target, key);
+            trigger(target, key); // 触发
             return res;
         }
     },

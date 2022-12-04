@@ -1,20 +1,20 @@
-export let activeEffect = null as any;
-export let depsMap = new WeakMap();
+export let activeEffect = null as any; 
+export let depsMap = new WeakMap(); // 依赖Map
 
 export class ReactiveEffect {
-  public active = true;
+  public active = true; // 只运行一次
   public parent = null;
-  public deps = [];
-  constructor(public fn: Function) { }
+  public deps = []; // 依赖 deps
+  constructor(public fn: Function, public scheduler?) { }
   run() {
     if (!this.active) {
-      this.fn();
+      return this.fn();
     } else {
       try {
         this.parent = activeEffect
         activeEffect = this;
         cleanEffect(this);
-        this.fn();
+        return this.fn();
       } finally {
         // 取消当前正在运行的effect
         activeEffect = this.parent;
@@ -47,7 +47,7 @@ export function track(target, key) {
     if (!deps) {
       targetMap.set(key, deps = new Set())
     }
-    trackEffect(deps)
+    trackEffects(deps)
     deps.add(activeEffect);
   }
 }
@@ -62,28 +62,33 @@ export function trigger(target, key) {
   }
 }
 
-export function triggerEffects(effects){
+export function triggerEffects(effects) {
   if (effects) {
-      effects = new Set(effects)
-      effects.forEach(effect => {
-          if (effect !== activeEffect) { // 保证要执行的effect不是当前的effect
-              effect.run();
+    effects = new Set(effects)
+    effects.forEach(effect => {
+      if (effect !== activeEffect) { // 保证要执行的effect不是当前的effect
+          if(effect.scheduler){
+              effect.scheduler(); // 可以提供一个调度函数，用户实现自己的逻辑
+          }else{
+              effect.run(); // 数据变化了，找到对应的effect 重新执行
           }
-      });
+      }
+  });
   }
 }
 
-export function trackEffect(deps) {
+export function trackEffects(deps) {
   if (!activeEffect) {
     return
   }
   const shouldTrack = !deps.has(activeEffect);
   if (shouldTrack) {
+    deps.add(activeEffect);
     activeEffect.deps.push(deps);
   }
 }
 export function effect(fn, options = {} as any) {
-  const _effect = new ReactiveEffect(fn);
+  const _effect = new ReactiveEffect(fn, options.scheduler);
   _effect.run();
   const runner = _effect.run.bind(_effect) as any;
   runner.effect = _effect; // 暴露effect的实例

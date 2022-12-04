@@ -21,29 +21,32 @@ var VueReactivity = (() => {
   // packages/reactivity/src/index.ts
   var src_exports = {};
   __export(src_exports, {
+    computed: () => computed,
     effect: () => effect,
-    reactive: () => reactive
+    reactive: () => reactive,
+    watch: () => watch
   });
 
   // packages/reactivity/src/effect.ts
   var activeEffect = null;
   var depsMap = /* @__PURE__ */ new WeakMap();
   var ReactiveEffect = class {
-    constructor(fn) {
+    constructor(fn, scheduler) {
       this.fn = fn;
+      this.scheduler = scheduler;
       this.active = true;
       this.parent = null;
       this.deps = [];
     }
     run() {
       if (!this.active) {
-        this.fn();
+        return this.fn();
       } else {
         try {
           this.parent = activeEffect;
           activeEffect = this;
           cleanEffect(this);
-          this.fn();
+          return this.fn();
         } finally {
           activeEffect = this.parent;
           this.parent = null;
@@ -74,7 +77,7 @@ var VueReactivity = (() => {
       if (!deps) {
         targetMap.set(key, deps = /* @__PURE__ */ new Set());
       }
-      trackEffect(deps);
+      trackEffects(deps);
       deps.add(activeEffect);
     }
   }
@@ -92,22 +95,27 @@ var VueReactivity = (() => {
       effects = new Set(effects);
       effects.forEach((effect2) => {
         if (effect2 !== activeEffect) {
-          effect2.run();
+          if (effect2.scheduler) {
+            effect2.scheduler();
+          } else {
+            effect2.run();
+          }
         }
       });
     }
   }
-  function trackEffect(deps) {
+  function trackEffects(deps) {
     if (!activeEffect) {
       return;
     }
     const shouldTrack = !deps.has(activeEffect);
     if (shouldTrack) {
+      deps.add(activeEffect);
       activeEffect.deps.push(deps);
     }
   }
   function effect(fn, options = {}) {
-    const _effect = new ReactiveEffect(fn);
+    const _effect = new ReactiveEffect(fn, options.scheduler);
     _effect.run();
     const runner = _effect.run.bind(_effect);
     runner.effect = _effect;
@@ -117,6 +125,9 @@ var VueReactivity = (() => {
   // packages/shared/src/index.ts
   function isObject(val) {
     return val !== null && typeof val === "object";
+  }
+  function isFunction(val) {
+    return val !== null && typeof val === "function";
   }
 
   // packages/reactivity/src/baseHandler.ts
@@ -161,6 +172,73 @@ var VueReactivity = (() => {
     const proxy = new Proxy(target, baseHandler);
     reactiveMap.set(target, proxy);
     return proxy;
+  }
+
+  // packages/reactivity/src/computed.ts
+  function computed(getterOrOptions) {
+    let isGetter = isFunction(getterOrOptions);
+    let getter, setter;
+    const fn = () => console.warn("computed is readonly ");
+    if (isGetter) {
+      getter = getterOrOptions;
+      setter = fn;
+    } else {
+      getter = getterOrOptions.get;
+      setter = getterOrOptions.set || fn;
+    }
+    return new ComputedRefImpl(getter, setter);
+  }
+  var ComputedRefImpl = class {
+    constructor(getter, setter) {
+      this.getter = getter;
+      this.setter = setter;
+      this._dirty = true;
+      this.__v_isRef = true;
+      this.effect = new ReactiveEffect(getter, () => {
+        if (!this._dirty) {
+          this._dirty = true;
+          triggerEffects(this.deps);
+        }
+      });
+    }
+    get value() {
+      if (activeEffect) {
+        trackEffects(this.deps || (this.deps = /* @__PURE__ */ new Set()));
+      }
+      if (this._dirty) {
+        this._dirty = false;
+        this._value = this.effect.run();
+      }
+      return this._value;
+    }
+    set value(newValues) {
+      this.setter(newValues);
+    }
+  };
+
+  // packages/reactivity/src/watch.ts
+  function traversal(context) {
+  }
+  function watch(context, fn) {
+    let getter;
+    if (isReactive(context)) {
+      getter = traversal(context);
+    } else if (isFunction(context)) {
+      getter = context;
+    }
+    let oldValue;
+    let cleanup;
+    const onCleanup = (fn2) => {
+      cleanup = fn2;
+    };
+    const setter = () => {
+      cleanup && cleanup();
+      let newValue = effect2.run();
+      fn(oldValue, newValue, onCleanup);
+      oldValue = newValue;
+    };
+    const effect2 = new ReactiveEffect(getter, setter);
+    oldValue = effect2.run();
   }
   return __toCommonJS(src_exports);
 })();
